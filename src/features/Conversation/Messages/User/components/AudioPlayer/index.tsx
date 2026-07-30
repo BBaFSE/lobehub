@@ -3,7 +3,7 @@
 import { Icon } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
 import { PauseIcon, PlayIcon } from 'lucide-react';
-import { memo, type MouseEvent, useCallback, useRef, useState } from 'react';
+import { memo, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useWaveform } from './useWaveform';
@@ -79,10 +79,20 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     align-items: center;
 
     height: 32px;
+    padding: 0;
+    border: 0;
+
+    background: transparent;
+
+    &:focus-visible {
+      border-radius: 4px;
+      outline: 2px solid ${cssVar.colorPrimary};
+      outline-offset: 2px;
+    }
   `,
 }));
 
-const formatTime = (seconds: number): string => {
+export const formatTime = (seconds: number): string => {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
@@ -91,21 +101,39 @@ const formatTime = (seconds: number): string => {
 
 interface AudioPlayerProps {
   alt?: string;
+  durationMs?: number;
   url: string;
 }
 
-const AudioPlayer = memo<AudioPlayerProps>(({ url, alt }) => {
+const AudioPlayer = memo<AudioPlayerProps>(({ url, alt, durationMs }) => {
   const { t } = useTranslation('chat');
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(() => (durationMs ? durationMs / 1000 : 0));
   // Only fetch/decode the waveform once the user actually engages with the clip, so a conversation
   // full of audio attachments doesn't download every file just to draw decorative bars.
   const [waveformEnabled, setWaveformEnabled] = useState(false);
 
   const peaks = useWaveform(url, waveformEnabled);
   const progress = duration > 0 ? currentTime / duration : 0;
+
+  useEffect(() => {
+    const audio = audioRef.current;
+
+    setCurrentTime(0);
+    setDuration(durationMs ? durationMs / 1000 : 0);
+    setIsPlaying(false);
+    setWaveformEnabled(false);
+
+    return () => {
+      if (!audio) return;
+
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    };
+  }, [durationMs, url]);
 
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
@@ -116,7 +144,7 @@ const AudioPlayer = memo<AudioPlayerProps>(({ url, alt }) => {
   }, []);
 
   const handleSeek = useCallback(
-    (e: MouseEvent<HTMLDivElement>) => {
+    (e: MouseEvent<HTMLButtonElement>) => {
       const audio = audioRef.current;
       if (!audio || !duration) return;
       setWaveformEnabled(true);
@@ -151,7 +179,12 @@ const AudioPlayer = memo<AudioPlayerProps>(({ url, alt }) => {
       >
         <Icon icon={isPlaying ? PauseIcon : PlayIcon} size={16} />
       </button>
-      <div className={styles.waveform} onClick={handleSeek}>
+      <button
+        aria-label={t('audioPlayer.seek')}
+        className={styles.waveform}
+        type="button"
+        onClick={handleSeek}
+      >
         {peaks.map((peak, i) => {
           const played = peaks.length > 0 && i / peaks.length <= progress;
           return (
@@ -162,7 +195,7 @@ const AudioPlayer = memo<AudioPlayerProps>(({ url, alt }) => {
             />
           );
         })}
-      </div>
+      </button>
       <span className={styles.time}>{formatTime(currentTime || duration)}</span>
     </div>
   );

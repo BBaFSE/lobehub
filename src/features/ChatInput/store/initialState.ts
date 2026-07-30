@@ -1,4 +1,4 @@
-import { type OpenAIChatMessage } from '@lobechat/types';
+import { type OpenAIChatMessage, type UploadFileItem } from '@lobechat/types';
 import { type IEditor, type SlashOptions } from '@lobehub/editor';
 import { type ChatInputProps } from '@lobehub/editor/react';
 import { type MenuProps } from '@lobehub/ui';
@@ -11,6 +11,8 @@ export type SendButtonHandler = (params: {
   getEditorData: () => Record<string, any> | undefined;
   getMarkdownContent: () => string;
 }) => Promise<void> | void;
+
+export type VoiceMessageSendHandler = (file: UploadFileItem) => Promise<void> | void;
 
 export interface SendButtonProps {
   disabled?: boolean;
@@ -54,6 +56,7 @@ export const DEFAULT_CHAT_INPUT_FEATURE = {
 } as const satisfies Required<ChatInputFeature>;
 
 export interface PublicState {
+  activeAudioInputMode?: 'dictation' | 'voiceMessage';
   agentId?: string;
   allowExpand?: boolean;
   contextWindowMessages?: ContextWindowMessage[];
@@ -66,6 +69,7 @@ export interface PublicState {
   mobile?: boolean;
   onMarkdownContentChange?: (content: string) => void;
   onSend?: SendButtonHandler;
+  onVoiceMessageSend?: VoiceMessageSendHandler;
   rightActions: ActionKeys[];
   sendButtonProps?: SendButtonProps;
   sendMenu?: MenuProps;
@@ -87,6 +91,7 @@ export interface State extends PublicState {
 }
 
 export const initialState: State = {
+  activeAudioInputMode: undefined,
   allowExpand: true,
   expand: false,
   feature: DEFAULT_CHAT_INPUT_FEATURE,

@@ -31,6 +31,24 @@ interface ResolveArgs {
 
 const dedupe = (ids: string[]) => Array.from(new Set(ids));
 
+const getAudioMetadata = (
+  metadata: unknown,
+  fileType: string,
+): Pick<ChatAudioItem, 'codec' | 'durationMs' | 'mimeType'> => {
+  const value =
+    metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    ...(typeof value.codec === 'string' ? { codec: value.codec } : undefined),
+    ...(typeof value.durationMs === 'number' && Number.isFinite(value.durationMs)
+      ? { durationMs: value.durationMs }
+      : undefined),
+    mimeType: typeof value.mimeType === 'string' ? value.mimeType : fileType,
+  };
+};
+
 /**
  * Resolve fileIds into image/video/file lists for the LLM prompt layer.
  *
@@ -113,7 +131,12 @@ export const resolveAttachmentsByFileIds = async ({
       continue;
     }
     if (fileType.startsWith('audio')) {
-      result.audioList.push({ alt: file.name || 'audio', id: file.id, url: resolvedUrl });
+      result.audioList.push({
+        ...getAudioMetadata(file.metadata, fileType),
+        alt: file.name || 'audio',
+        id: file.id,
+        url: resolvedUrl,
+      });
       continue;
     }
     if (entry.parseError) {

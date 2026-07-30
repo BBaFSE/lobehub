@@ -22,6 +22,7 @@ export const sendMessage = (
   return async (params: SendMessageParams) => {
     const state = get();
     const { context, editor, hooks, displayMessages } = state;
+    const { preserveComposer, ...sendParams } = params;
 
     // ===== Hook: onBeforeSendMessage =====
     if (hooks.onBeforeSendMessage) {
@@ -35,7 +36,7 @@ export const sendMessage = (
     // Keep ConversationStore in sync with the editor, which is cleared immediately on send.
     // Do this before awaiting the full streaming lifecycle so drafts typed during generation
     // are not overwritten when the request completes.
-    set({ inputMessage: '' });
+    if (!preserveComposer) set({ inputMessage: '' });
 
     // Get global chat store
     const chatStore = useChatStore.getState();
@@ -50,7 +51,7 @@ export const sendMessage = (
     // not here after the full streaming lifecycle — otherwise the isolated
     // UI would not see the AI response while it is still streaming.
     const result = await chatStore.sendMessage({
-      ...params,
+      ...sendParams,
       context,
       inputEditor: editor,
       messages,

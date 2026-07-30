@@ -23,6 +23,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
     mobile,
     sendButtonProps,
     onSend,
+    onVoiceMessageSend,
     sendMenu,
     chatInputEditorRef,
     onMarkdownContentChange,
@@ -47,6 +48,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
             mentionItems,
             mobile,
             rightActions,
+            onVoiceMessageSend,
             sendButtonProps,
             sendMenu,
             slashMenuRef,
@@ -71,6 +73,7 @@ export const ChatInputProvider = memo<ChatInputProviderProps>(
           slashPlacement={slashPlacement}
           onMarkdownContentChange={onMarkdownContentChange}
           onSend={onSend}
+          onVoiceMessageSend={onVoiceMessageSend}
         />
         {children}
       </Provider>

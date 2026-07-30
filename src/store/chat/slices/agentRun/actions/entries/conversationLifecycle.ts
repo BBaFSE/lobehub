@@ -10,6 +10,7 @@ import { formatSelectedSkillsContext, formatSelectedToolsContext } from '@lobech
 import { isRemoteHeterogeneousType } from '@lobechat/heterogeneous-agents';
 import { chainCompressContext } from '@lobechat/prompts';
 import type {
+  ChatAudioItem,
   ChatImageItem,
   ChatThreadType,
   ChatToolPayload,
@@ -527,9 +528,10 @@ export class ConversationLifecycleActionImpl {
 
     if (runningQueueBlockingOp) {
       // Snapshot file previews so the tray can render thumbnails AND the
-      // resumed sendMessage can rebuild imageList/videoList — by the time
+      // resumed sendMessage can rebuild audioList/imageList/videoList — by the time
       // we drain, chatUploadFileList has long been cleared.
       const filesPreview: QueuedFile[] = (files ?? []).map((f) => ({
+        audioMetadata: f.audioMetadata,
         id: f.id,
         mimeType: f.file?.type ?? '',
         name: f.file?.name ?? f.id,
@@ -636,6 +638,14 @@ export class ConversationLifecycleActionImpl {
         url: f.fileUrl || f.base64Url || f.previewUrl || '',
         alt: f.file?.name || f.id,
       }));
+    const tempAudios: ChatAudioItem[] = filesForPreview
+      .filter((f) => f.audioMetadata || f.file?.type?.startsWith('audio'))
+      .map((f) => ({
+        ...f.audioMetadata,
+        id: f.id,
+        url: f.fileUrl || f.base64Url || f.previewUrl || '',
+        alt: f.file?.name || f.id,
+      }));
 
     // use optimistic update to avoid the slow waiting (now with operationId for correct context)
     this.#get().optimisticCreateTmpMessage(
@@ -649,6 +659,7 @@ export class ConversationLifecycleActionImpl {
         // if there is topicId, then add topicId to message
         topicId: operationContext.topicId ?? undefined,
         threadId: operationContext.threadId ?? undefined,
+        audioList: tempAudios.length > 0 ? tempAudios : undefined,
         imageList: tempImages.length > 0 ? tempImages : undefined,
         videoList: tempVideos.length > 0 ? tempVideos : undefined,
         // Pass metadata for immediate display
