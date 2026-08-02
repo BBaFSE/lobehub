@@ -22,7 +22,7 @@ export const sendMessage = (
   return async (params: SendMessageParams) => {
     const state = get();
     const { context, editor, hooks, displayMessages } = state;
-    const { preserveComposer, ...sendParams } = params;
+    const { preserveComposer } = params;
 
     // ===== Hook: onBeforeSendMessage =====
     if (hooks.onBeforeSendMessage) {
@@ -51,7 +51,7 @@ export const sendMessage = (
     // not here after the full streaming lifecycle — otherwise the isolated
     // UI would not see the AI response while it is still streaming.
     const result = await chatStore.sendMessage({
-      ...sendParams,
+      ...params,
       context,
       inputEditor: editor,
       messages,

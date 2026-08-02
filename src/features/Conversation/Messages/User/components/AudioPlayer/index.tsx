@@ -6,6 +6,7 @@ import { PauseIcon, PlayIcon } from 'lucide-react';
 import { memo, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useAudioElementSource } from './useAudioElementSource';
 import { useWaveform } from './useWaveform';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
@@ -115,24 +116,16 @@ const AudioPlayer = memo<AudioPlayerProps>(({ url, alt, durationMs }) => {
   // full of audio attachments doesn't download every file just to draw decorative bars.
   const [waveformEnabled, setWaveformEnabled] = useState(false);
 
+  useAudioElementSource(audioRef, url);
+
   const peaks = useWaveform(url, waveformEnabled);
   const progress = duration > 0 ? currentTime / duration : 0;
 
   useEffect(() => {
-    const audio = audioRef.current;
-
     setCurrentTime(0);
     setDuration(durationMs ? durationMs / 1000 : 0);
     setIsPlaying(false);
     setWaveformEnabled(false);
-
-    return () => {
-      if (!audio) return;
-
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-    };
   }, [durationMs, url]);
 
   const togglePlay = useCallback(() => {
@@ -161,7 +154,6 @@ const AudioPlayer = memo<AudioPlayerProps>(({ url, alt, durationMs }) => {
       <audio
         preload={'metadata'}
         ref={audioRef}
-        src={url}
         onDurationChange={(e) => setDuration(e.currentTarget.duration)}
         onEnded={() => setIsPlaying(false)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
