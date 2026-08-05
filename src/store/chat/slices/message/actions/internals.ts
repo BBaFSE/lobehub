@@ -1,5 +1,5 @@
 import { parse } from '@lobechat/conversation-flow';
-import { type TraceEventPayloads } from '@lobechat/types';
+import { type ConversationContext, type TraceEventPayloads } from '@lobechat/types';
 import debug from 'debug';
 import isEqual from 'fast-deep-equal';
 
@@ -35,10 +35,11 @@ export class MessageInternalsActionImpl {
 
   internal_dispatchMessage = (
     payload: MessageDispatch,
-    context?: { operationId?: string },
+    context?: { conversationContext?: ConversationContext; operationId?: string },
   ): void => {
     // Get full conversation context (including scope) from operation or global state
-    const ctx = this.#get().internal_getConversationContext(context);
+    const ctx =
+      context?.conversationContext ?? this.#get().internal_getConversationContext(context);
     log(
       '[internal_dispatchMessage] context: agentId=%s, topicId=%s, threadId=%s, scope=%s',
       ctx.agentId,

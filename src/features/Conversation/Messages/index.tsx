@@ -23,6 +23,7 @@ import type { WorkflowExpandLevelDefault } from './AssistantGroup/components/Wor
 import TextSelectionActionLayer from './components/TextSelectionActionLayer';
 import CompressedGroupMessage from './CompressedGroup';
 import GroupTasksMessage from './GroupTasks';
+import { getMessageInteractionState } from './messageInteraction';
 import TaskMessage from './Task';
 import TaskCallbackMessage from './TaskCallback';
 import TasksMessage from './Tasks';
@@ -79,6 +80,10 @@ const MessageItem = memo<MessageItemProps>(
     // Get message from ConversationStore
     const message = useConversationStore(dataSelectors.getDisplayMessageById(id), isEqual);
     const role = message?.role;
+    const { effectiveDisableEditing, shouldSuppressContextMenu } = getMessageInteractionState(
+      message,
+      disableEditing,
+    );
 
     const [editing, isMessageCreating] = useConversationStore((s) => [
       messageStateSelectors.isMessageEditing(id)(s),
@@ -102,6 +107,11 @@ const MessageItem = memo<MessageItemProps>(
 
     const onContextMenu = useCallback(
       async (event: MouseEvent<HTMLDivElement>) => {
+        if (shouldSuppressContextMenu) {
+          event.preventDefault();
+          return;
+        }
+
         if (!role || (role !== 'user' && role !== 'assistant' && role !== 'assistantGroup')) return;
 
         if (!message) return;
@@ -127,19 +137,19 @@ const MessageItem = memo<MessageItemProps>(
 
         handleContextMenu(event);
       },
-      [handleContextMenu, id, role, message],
+      [handleContextMenu, id, message, role, shouldSuppressContextMenu],
     );
 
     const renderContent = useCallback(() => {
       switch (role) {
         case 'user': {
-          return <UserMessage disableEditing={disableEditing} id={id} index={index} />;
+          return <UserMessage disableEditing={effectiveDisableEditing} id={id} index={index} />;
         }
 
         case 'assistant': {
           return (
             <AssistantMessage
-              disableEditing={disableEditing}
+              disableEditing={effectiveDisableEditing}
               footerRender={footerRender}
               id={id}
               index={index}
@@ -152,7 +162,7 @@ const MessageItem = memo<MessageItemProps>(
           return (
             <AssistantGroupMessage
               defaultWorkflowExpandLevel={defaultWorkflowExpandLevel}
-              disableEditing={disableEditing}
+              disableEditing={effectiveDisableEditing}
               footerRender={footerRender}
               id={id}
               index={index}
@@ -169,7 +179,7 @@ const MessageItem = memo<MessageItemProps>(
           return (
             <AssistantGroupMessage
               defaultWorkflowExpandLevel={defaultWorkflowExpandLevel}
-              disableEditing={disableEditing}
+              disableEditing={effectiveDisableEditing}
               footerRender={footerRender}
               id={id}
               index={index}
@@ -181,7 +191,7 @@ const MessageItem = memo<MessageItemProps>(
         case 'task': {
           return (
             <TaskMessage
-              disableEditing={disableEditing}
+              disableEditing={effectiveDisableEditing}
               id={id}
               index={index}
               isLatestItem={isLatestItem}
@@ -205,7 +215,7 @@ const MessageItem = memo<MessageItemProps>(
         }
 
         case 'tool': {
-          return <ToolMessage disableEditing={disableEditing} id={id} index={index} />;
+          return <ToolMessage disableEditing={effectiveDisableEditing} id={id} index={index} />;
         }
 
         case 'verify': {
@@ -218,7 +228,15 @@ const MessageItem = memo<MessageItemProps>(
       }
 
       return null;
-    }, [role, defaultWorkflowExpandLevel, disableEditing, footerRender, id, index, isLatestItem]);
+    }, [
+      role,
+      defaultWorkflowExpandLevel,
+      effectiveDisableEditing,
+      footerRender,
+      id,
+      index,
+      isLatestItem,
+    ]);
 
     if (!role) return;
 
