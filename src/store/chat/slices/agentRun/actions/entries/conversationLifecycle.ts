@@ -1254,10 +1254,6 @@ export class ConversationLifecycleActionImpl {
       this.#get().updateOperationMetadata(operationId, { inputEditorTempState: null });
 
       if (abortController.signal.aborted) {
-        if (optimisticTopic && optimisticTopicResolved && heteroData.topicId) {
-          this.#get().internal_updateTopicLoading(heteroData.topicId, false);
-        }
-
         return {
           assistantMessageId: heteroData.assistantMessageId,
           userMessageId: heteroData.userMessageId,
