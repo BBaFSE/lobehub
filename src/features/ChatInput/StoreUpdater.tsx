@@ -17,6 +17,7 @@ export interface StoreUpdaterProps extends Partial<PublicState> {
 const StoreUpdater = memo<StoreUpdaterProps>(
   ({
     agentId,
+    canRecordVoiceMessage,
     chatInputEditorRef,
     contextWindowMessages,
     draftKey,
@@ -39,6 +40,7 @@ const StoreUpdater = memo<StoreUpdaterProps>(
     const editor = useChatInputEditor();
 
     useStoreUpdater('agentId', agentId);
+    useStoreUpdater('canRecordVoiceMessage', canRecordVoiceMessage);
     useStoreUpdater('contextWindowMessages', contextWindowMessages);
     useStoreUpdater('draftKey', draftKey);
     useStoreUpdater('mobile', mobile!);
