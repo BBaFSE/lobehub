@@ -198,6 +198,32 @@ const log = debug('lobe-server:ai-agent-service');
  */
 const STOPPED_TOOL_CONTENT = 'Tool execution was aborted by user.';
 
+const isDeviceCancellationAccepted = (
+  result: Awaited<ReturnType<typeof deviceGateway.executeToolCall>>,
+): boolean => {
+  if (!result.success) return false;
+
+  const readSemanticSuccess = (value: unknown): boolean | undefined => {
+    if (!value || typeof value !== 'object') return;
+    const success = (value as { success?: unknown }).success;
+    return typeof success === 'boolean' ? success : undefined;
+  };
+
+  const stateSuccess = readSemanticSuccess(result.state);
+  if (stateSuccess !== undefined) return stateSuccess;
+
+  if (result.content) {
+    try {
+      const contentSuccess = readSemanticSuccess(JSON.parse(result.content));
+      if (contentSuccess !== undefined) return contentSuccess;
+    } catch {
+      // Legacy devices may return a plain-text success payload.
+    }
+  }
+
+  return true;
+};
+
 const createGraphAwareAgentFactory =
   (
     upstreamFactory?: AgentRuntimeServiceOptions['agentFactory'],
@@ -5513,10 +5539,10 @@ export class AiAgentService {
       resolvedTopicId = operation?.topicId ?? undefined;
     }
 
-    // 2. Cancel a device-backed hetero process if applicable.
-    // Check topic.metadata.runningOperation for device + heteroType info seeded by execAgent.
-    // This runs regardless of whether interruptOperation succeeds — the device process
-    // is independent of the local operation registry.
+    // 2. Resolve the execution owner and ask that owner to interrupt the run.
+    // Device-backed hetero runs are not registered in the in-process runtime
+    // coordinator, so their acknowledgement must come from cancelHeteroTask.
+    let interrupted: boolean | undefined;
     if (resolvedTopicId) {
       const topic = await this.topicModel.findById(resolvedTopicId);
       const runningOp = (topic?.metadata as any)?.runningOperation as
@@ -5543,7 +5569,7 @@ export class AiAgentService {
         );
         const cancelWorkspaceId =
           runningOp.deviceWorkspaceId ?? (await this.resolveDeviceWorkspaceId(runningOp.deviceId));
-        await deviceGateway
+        const cancelResult = await deviceGateway
           .executeToolCall(
             {
               deviceId: runningOp.deviceId,
@@ -5557,18 +5583,27 @@ export class AiAgentService {
             },
             5_000,
           )
-          .catch((err) => log('interruptTask: cancelHeteroTask dispatch failed: %O', err));
+          .catch((err) => {
+            log('interruptTask: cancelHeteroTask dispatch failed: %O', err);
+            return { content: '', error: String(err), success: false };
+          });
+        interrupted = isDeviceCancellationAccepted(cancelResult);
+        log(
+          'interruptTask: cancelHeteroTask=%s for operationId=%s',
+          interrupted,
+          resolvedOperationId,
+        );
       }
     }
 
-    // 3. Interrupt the runtime operation first. Only mark the thread cancelled
-    // after the runtime acknowledges the interrupt to avoid unlocking a live task.
-    const interrupted = await this.agentRuntimeService.interruptOperation(resolvedOperationId);
-    log(
-      'interruptTask: interruptOperation=%s for operationId=%s',
-      interrupted,
-      resolvedOperationId,
-    );
+    if (interrupted === undefined) {
+      interrupted = await this.agentRuntimeService.interruptOperation(resolvedOperationId);
+      log(
+        'interruptTask: interruptOperation=%s for operationId=%s',
+        interrupted,
+        resolvedOperationId,
+      );
+    }
 
     if (!interrupted) {
       const alreadyCancelled = thread?.status === ThreadStatus.Cancel;
@@ -5580,7 +5615,7 @@ export class AiAgentService {
       };
     }
 
-    // 4. Update Thread status to cancel
+    // 3. Update Thread status only after the execution owner acknowledges.
     if (thread) {
       await this.threadModel.update(thread.id, {
         metadata: {

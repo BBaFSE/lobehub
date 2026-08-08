@@ -9,6 +9,7 @@ const {
   mockDispatchAgentRun,
   mockExecuteToolCall,
   mockGetHeterogeneousResumeSessionId,
+  mockInterruptOperation,
   mockMessageCreate,
   mockResolveAttachmentsByFileIds,
   mockSpawnHeteroSandbox,
@@ -23,6 +24,7 @@ const {
   mockExecuteToolCall: vi.fn().mockResolvedValue({ success: true }),
   mockGetHeterogeneousResumeSessionId: vi.fn().mockResolvedValue(undefined),
   mockIngestAttachment: vi.fn(),
+  mockInterruptOperation: vi.fn().mockResolvedValue(true),
   mockMessageCreate: vi.fn(),
   mockPublishAgentRuntimeEnd: vi.fn().mockResolvedValue('end-event-id'),
   mockPublishAgentRuntimeInit: vi.fn().mockResolvedValue('init-event-id'),
@@ -175,7 +177,7 @@ vi.mock('@/server/services/agentRuntime', () => ({
       operationId: 'op-123',
       success: true,
     }),
-    interruptOperation: vi.fn().mockResolvedValue(true),
+    interruptOperation: mockInterruptOperation,
   })),
 }));
 
@@ -216,6 +218,7 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
     mockSpawnHeteroSandbox.mockResolvedValue(undefined);
     mockDispatchAgentRun.mockResolvedValue({ success: true });
     mockExecuteToolCall.mockResolvedValue({ success: true });
+    mockInterruptOperation.mockResolvedValue(true);
     mockGetHeterogeneousResumeSessionId.mockResolvedValue(undefined);
     mockDeviceFindByDeviceId.mockResolvedValue({ defaultCwd: '/Users/alice/repo' });
     mockDeviceFindWorkspaceDeviceById.mockResolvedValue(undefined);
@@ -794,8 +797,13 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
 
       mockExecuteToolCall.mockClear();
       topicMock.findById.mockResolvedValue({ metadata: seed });
-      await service.interruptTask({ operationId: result.operationId, topicId: 'topic-1' });
+      mockInterruptOperation.mockResolvedValue(false);
+      const interruptResult = await service.interruptTask({
+        operationId: result.operationId,
+        topicId: 'topic-1',
+      });
 
+      expect(interruptResult).toMatchObject({ success: true });
       expect(mockExecuteToolCall).toHaveBeenCalledWith(
         expect.objectContaining({ deviceId: 'device-1', userId }),
         expect.objectContaining({
@@ -804,6 +812,7 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
         }),
         5_000,
       );
+      expect(mockInterruptOperation).not.toHaveBeenCalled();
     });
 
     it('keeps the conversation workspace separate from a personal platform device scope', async () => {
@@ -899,8 +908,13 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
         },
       });
 
-      await service.interruptTask({ operationId: 'operation-1', topicId: 'topic-1' });
+      mockInterruptOperation.mockResolvedValue(false);
+      const result = await service.interruptTask({
+        operationId: 'operation-1',
+        topicId: 'topic-1',
+      });
 
+      expect(result).toMatchObject({ success: true });
       expect(mockExecuteToolCall).toHaveBeenCalledWith(
         {
           deviceId: 'author-desktop',
@@ -910,6 +924,68 @@ describe('AiAgentService.execAgent - hetero early-exit file attachments', () => 
         expect.objectContaining({ apiName: 'cancelHeteroTask' }),
         5_000,
       );
+      expect(mockInterruptOperation).not.toHaveBeenCalled();
+    });
+
+    it('reports failure when the owning device rejects cancellation', async () => {
+      topicMock.findById.mockResolvedValue({
+        metadata: {
+          runningOperation: {
+            assistantMessageId: 'assistant-1',
+            deviceId: 'author-desktop',
+            deviceUserId: 'author-user',
+            heteroType: 'openclaw',
+            operationId: 'operation-1',
+          },
+        },
+      });
+      mockExecuteToolCall.mockResolvedValue({
+        state: { success: false },
+        success: true,
+      });
+
+      const result = await service.interruptTask({
+        operationId: 'operation-1',
+        topicId: 'topic-1',
+      });
+
+      expect(result).toMatchObject({ success: false });
+      expect(mockInterruptOperation).not.toHaveBeenCalled();
+    });
+
+    it('reports failure when cancellation cannot reach the owning device', async () => {
+      topicMock.findById.mockResolvedValue({
+        metadata: {
+          runningOperation: {
+            deviceId: 'offline-desktop',
+            deviceUserId: userId,
+            heteroType: 'kimi-code',
+            operationId: 'operation-1',
+          },
+        },
+      });
+      mockExecuteToolCall.mockRejectedValue(new Error('device disconnected'));
+
+      const result = await service.interruptTask({
+        operationId: 'operation-1',
+        topicId: 'topic-1',
+      });
+
+      expect(result).toMatchObject({ success: false });
+      expect(mockInterruptOperation).not.toHaveBeenCalled();
+    });
+
+    it('keeps in-process interruption owned by the runtime coordinator', async () => {
+      mockInterruptOperation.mockResolvedValue(false);
+
+      const result = await service.interruptTask({
+        operationId: 'operation-1',
+        topicId: 'topic-in-process',
+      });
+
+      expect(result).toMatchObject({ success: false });
+      expect(mockExecuteToolCall).not.toHaveBeenCalled();
+      expect(mockInterruptOperation).toHaveBeenCalledWith('operation-1');
     });
 
     it('recovers the topic from the operation when the cancellation caller omits it', async () => {

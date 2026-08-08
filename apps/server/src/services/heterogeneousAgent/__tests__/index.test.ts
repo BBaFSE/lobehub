@@ -476,7 +476,7 @@ describe('HeterogeneousAgentService', () => {
 
       expect(published[0].event.data).toMatchObject({
         operationId: 'op-3',
-        reason: 'cancelled',
+        reason: 'interrupted',
       });
     });
 
@@ -661,7 +661,7 @@ describe('HeterogeneousAgentService', () => {
       dispatchSpy.mockRestore();
     });
 
-    it('persists cancellation as terminal without firing completion hooks', async () => {
+    it('normalizes cancellation to interrupted and fires completion hooks', async () => {
       const metadata = {
         runningOperation: {
           assistantMessageId: 'msg-cancelled',
@@ -674,7 +674,7 @@ describe('HeterogeneousAgentService', () => {
         }),
         settleRunningOperation: vi.fn().mockResolvedValue(metadata),
       } as unknown as NonNullable<HeterogeneousAgentServiceOptions['topicModel']>;
-      const { service } = createService({ topicModel });
+      const { published, service } = createService({ topicModel });
       const { onComplete, onError } = registerHook('op-hook-cancelled');
       const dispatchSpy = vi.spyOn(CompletionLifecycle.prototype, 'dispatchHooks');
 
@@ -685,17 +685,30 @@ describe('HeterogeneousAgentService', () => {
         topicId: 'topic-hook-3',
       });
 
-      expect(onComplete).not.toHaveBeenCalled();
+      expect(onComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          operationId: 'op-hook-cancelled',
+          reason: 'interrupted',
+          topicId: 'topic-hook-3',
+        }),
+      );
       expect(onError).not.toHaveBeenCalled();
       expect(topicModel.settleRunningOperation).toHaveBeenCalledWith(
         'topic-hook-3',
         'op-hook-cancelled',
+        'active',
       );
       expect(dispatchSpy).toHaveBeenCalledWith(
         'op-hook-cancelled',
         expect.anything(),
         'interrupted',
-        { skipTerminalEffects: true },
+        undefined,
+      );
+      expect(published.at(-1)?.event).toEqual(
+        expect.objectContaining({
+          data: expect.objectContaining({ reason: 'interrupted' }),
+          type: 'agent_runtime_end',
+        }),
       );
       expect(hookDispatcher.hasHooks('op-hook-cancelled')).toBe(false);
     });
@@ -804,6 +817,25 @@ describe('HeterogeneousAgentService', () => {
         taskId: 'task_q',
         topicId: 'topic-q',
       });
+    });
+
+    it('delivers device cancellation as interrupted and settles the topic active', async () => {
+      const { service, topicModel } = makeService([taskHook]);
+
+      await service.heteroFinish({
+        agentType: 'claude-code',
+        operationId: 'op-q',
+        result: 'cancelled',
+        topicId: 'topic-q',
+      });
+
+      expect(mockPublishJSON).toHaveBeenCalledTimes(1);
+      expect(mockPublishJSON.mock.calls[0][0].body).toMatchObject({
+        hookId: 'task-on-complete',
+        reason: 'interrupted',
+        taskId: 'task_q',
+      });
+      expect(topicModel.settleRunningOperation).toHaveBeenCalledWith('topic-q', 'op-q', 'active');
     });
 
     it('negative control: delivers nothing when runningOperation.hooks is empty', async () => {

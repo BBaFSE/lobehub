@@ -247,7 +247,13 @@ export class TaskService {
       const aiAgentService = new AiAgentService(this.db, this.userId, {
         workspaceId: this.workspaceId,
       });
-      await aiAgentService.interruptTask({ operationId: target.operationId });
+      const result = await aiAgentService.interruptTask({ operationId: target.operationId });
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'The execution owner did not acknowledge cancellation.',
+        });
+      }
     }
 
     await this.taskTopicModel.updateStatus(target.taskId, topicId, 'canceled');
@@ -266,7 +272,13 @@ export class TaskService {
       const aiAgentService = new AiAgentService(this.db, this.userId, {
         workspaceId: this.workspaceId,
       });
-      await aiAgentService.interruptTask({ operationId: target.operationId });
+      const result = await aiAgentService.interruptTask({ operationId: target.operationId });
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'The execution owner did not acknowledge cancellation.',
+        });
+      }
     }
 
     await this.taskTopicModel.remove(target.taskId, topicId);
@@ -365,7 +377,14 @@ export class TaskService {
         // to avoid desynchronizing DB state from a still-running operation.
         if (t.operationId) {
           try {
-            await aiAgentService.interruptTask({ operationId: t.operationId });
+            const result = await aiAgentService.interruptTask({ operationId: t.operationId });
+            if (!result.success) {
+              console.error(
+                '[TaskService.updateStatus] execution owner did not acknowledge interruption for topic %s',
+                t.topicId,
+              );
+              continue;
+            }
           } catch (err) {
             console.error(
               '[TaskService.updateStatus] failed to interrupt topic %s:',

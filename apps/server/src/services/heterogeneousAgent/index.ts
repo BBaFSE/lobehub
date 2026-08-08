@@ -230,6 +230,13 @@ export class HeterogeneousAgentService {
   async heteroFinish(params: HeterogeneousFinishParams): Promise<void> {
     const { agentType, operationId, result, sessionId, topicId } = params;
     const error = normalizeHeterogeneousFinishError(agentType, params.error);
+    const completionReason =
+      result === 'success'
+        ? ('done' as const)
+        : result === 'error'
+          ? ('error' as const)
+          : ('interrupted' as const);
+    const runtimeEndReason = result === 'cancelled' ? 'interrupted' : result;
 
     log(
       'heteroFinish: user=%s topic=%s op=%s type=%s result=%s sessionId=%s',
@@ -281,7 +288,7 @@ export class HeterogeneousAgentService {
         agentType,
         error,
         operationId,
-        reason: result,
+        reason: runtimeEndReason,
         sessionId,
       },
       stepIndex: 0,
@@ -297,7 +304,11 @@ export class HeterogeneousAgentService {
     let serializedHooks: SerializedHook[] | undefined;
     let assistantMessageId: string | undefined;
     try {
-      const settledMetadata = await this.topicModel.settleRunningOperation(topicId, operationId);
+      const settledMetadata = await this.topicModel.settleRunningOperation(
+        topicId,
+        operationId,
+        completionReason === 'interrupted' ? 'active' : 'unread',
+      );
       if (!settledMetadata && runningOperation) {
         log('heteroFinish: operation ownership changed while settling op=%s', operationId);
         return;
@@ -346,12 +357,6 @@ export class HeterogeneousAgentService {
     // missing fields stay null (schema treats null as "not measured"). Kept inside
     // its own try so an upload hiccup never blocks the lifecycle dispatch — verify
     // and hooks still fire, persistCompletion just records null aggregates.
-    const completionReason =
-      result === 'success'
-        ? ('done' as const)
-        : result === 'error'
-          ? ('error' as const)
-          : ('interrupted' as const);
     let totals: Awaited<ReturnType<HeteroTraceRecorder['finalize']>> | undefined;
     try {
       totals = await this.traceRecorder.finalize(operationId, {
@@ -442,7 +447,6 @@ export class HeterogeneousAgentService {
         userId: this.userId,
       },
       completionReason,
-      completionReason === 'interrupted' ? { skipTerminalEffects: true } : undefined,
     );
     log('heteroFinish: dispatched completion lifecycle for op=%s result=%s', operationId, result);
   }
