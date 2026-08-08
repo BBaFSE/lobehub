@@ -345,18 +345,9 @@ describe('TaskModel', () => {
 
     it('should filter by projectId', async () => {
       const model = new TaskModel(serverDB, userId);
-      const [coordinator] = await serverDB
-        .insert(agents)
-        .values({ title: 'Project coordinator', userId })
-        .returning();
       const [project] = await serverDB
         .insert(projects)
-        .values({
-          coordinatorAgentId: coordinator.id,
-          identifier: 'TLIST',
-          name: 'Scoped project',
-          userId,
-        })
+        .values({ identifier: 'TLIST', name: 'Scoped project', userId })
         .returning();
       await model.create({ instruction: 'Project task', projectId: project.id });
       await model.create({ instruction: 'Unrelated task' });
@@ -508,18 +499,9 @@ describe('TaskModel', () => {
 
     it('should group only tasks from the requested project', async () => {
       const model = new TaskModel(serverDB, userId);
-      const [coordinator] = await serverDB
-        .insert(agents)
-        .values({ title: 'Project coordinator', userId })
-        .returning();
       const [project] = await serverDB
         .insert(projects)
-        .values({
-          coordinatorAgentId: coordinator.id,
-          identifier: 'TGRP',
-          name: 'Scoped project',
-          userId,
-        })
+        .values({ identifier: 'TGRP', name: 'Scoped project', userId })
         .returning();
       await model.create({ instruction: 'Project task', projectId: project.id });
       await model.create({ instruction: 'Unrelated task' });

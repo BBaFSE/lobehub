@@ -7,8 +7,6 @@ import {
   BookOpenIcon,
   LayoutDashboardIcon,
   ListTodoIcon,
-  MessageSquareIcon,
-  PlusIcon,
   TargetIcon,
 } from 'lucide-react';
 import { memo, useMemo } from 'react';
@@ -42,7 +40,6 @@ const ProjectSidebarContent = memo(() => {
   const detail = useCurrentProjectDetail(projectId);
   const detailSWR = useProjectStore((s) => s.useFetchProjectDetail)(projectId);
   const projectLibraries = detail?.knowledgeBases ?? [];
-  const projectConversations = detail?.conversations ?? [];
   const projectAgentItems = useMemo(
     () =>
       (detail?.agents ?? []).map(({ agent, binding }) => ({
@@ -108,40 +105,7 @@ const ProjectSidebarContent = memo(() => {
             title={t('sections.acceptance')}
             onClick={() => navigate(projectAcceptancePath)}
           />
-          <Accordion defaultExpandedKeys={['conversations', 'agents', 'libraries']} gap={4}>
-            <AccordionItem
-              itemKey="conversations"
-              paddingInline="8px 4px"
-              title={
-                <Text ellipsis fontSize={12} type="secondary" weight={500}>
-                  {t('sections.conversations')}
-                </Text>
-              }
-            >
-              <NavItem
-                icon={PlusIcon}
-                title={t('sidebar.newConversation')}
-                onClick={() => navigate(`/agent/${detail?.project.coordinatorAgentId}`)}
-              />
-              {detailSWR.isLoading ? (
-                <SkeletonList rows={3} />
-              ) : projectConversations.length === 0 ? (
-                <Text fontSize={12} style={{ padding: 8 }} type="secondary">
-                  {t('sidebar.conversationsEmpty')}
-                </Text>
-              ) : (
-                projectConversations.map((conversation) => (
-                  <NavItem
-                    icon={MessageSquareIcon}
-                    key={conversation.id}
-                    title={conversation.title || t('sidebar.untitledConversation')}
-                    onClick={() =>
-                      navigate(`/agent/${detail?.project.coordinatorAgentId}/${conversation.id}`)
-                    }
-                  />
-                ))
-              )}
-            </AccordionItem>
+          <Accordion defaultExpandedKeys={['agents', 'libraries']} gap={4}>
             <AccordionItem
               itemKey="agents"
               paddingInline="8px 4px"
