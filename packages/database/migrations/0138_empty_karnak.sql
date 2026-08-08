@@ -1,1 +1,12 @@
-CREATE INDEX "agent_operations_step_count_idx" ON "agent_operations" USING btree ("step_count");
+-- Step-count monitoring index on the hot append-only agent_operations table.
+--
+-- On cloud production this index must be built online before deploy:
+--
+--   CREATE INDEX CONCURRENTLY IF NOT EXISTS "agent_operations_step_count_idx"
+--   ON "agent_operations" USING btree ("step_count");
+--
+-- The guarded statement below is then a NO-OP on databases that already have
+-- the index, while fresh / self-hosted databases still converge to the target
+-- schema during normal migration replay. Keep it non-CONCURRENTLY so local
+-- PGlite / normal migration replay remains compatible (same pattern as 0125).
+CREATE INDEX IF NOT EXISTS "agent_operations_step_count_idx" ON "agent_operations" USING btree ("step_count");
