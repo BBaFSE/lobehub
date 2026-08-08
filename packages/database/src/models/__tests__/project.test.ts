@@ -8,6 +8,7 @@ import {
   projectCompletionReviews,
   projects,
   tasks,
+  topics,
   users,
   workspaces,
 } from '../../schemas';
@@ -44,12 +45,22 @@ describe('ProjectModel', () => {
   it('creates, lists, updates, and deletes a project in the owner scope', async () => {
     const project = await createProject(model, { description: 'A large effort', name: 'Apollo' });
     expect(project.status).toBe('backlog');
+    expect(project.coordinatorAgentId).toBeTruthy();
+    expect(await model.listAgents(project.id)).toEqual([
+      expect.objectContaining({
+        agent: expect.objectContaining({ id: project.coordinatorAgentId }),
+        binding: expect.objectContaining({ role: 'coordinator' }),
+      }),
+    ]);
     expect(await model.list()).toEqual([expect.objectContaining({ id: project.id })]);
 
     const updated = await model.update(project.id, { name: 'Apollo 2' });
     expect(updated?.name).toBe('Apollo 2');
     expect(await model.delete(project.id)).toEqual(expect.objectContaining({ id: project.id }));
     expect(await model.findById(project.id)).toBeNull();
+    expect(
+      await serverDB.select().from(agents).where(eq(agents.id, project.coordinatorAgentId)),
+    ).toHaveLength(0);
   });
 
   it('normalizes identifiers and enforces uniqueness within their ownership scope', async () => {
@@ -100,6 +111,37 @@ describe('ProjectModel', () => {
     ]);
     expect(await model.list({ statuses: [] })).toHaveLength(2);
     expect(await model.list({ limit: 1, offset: 1 })).toHaveLength(1);
+  });
+
+  it('lists recent conversations from the dedicated coordinator only', async () => {
+    const project = await createProject(model, { name: 'Conversation project' });
+    const otherProject = await createProject(model, { name: 'Other project' });
+    const now = new Date();
+    await serverDB.insert(topics).values([
+      {
+        agentId: project.coordinatorAgentId,
+        title: 'Older project conversation',
+        updatedAt: new Date(now.getTime() - 1000),
+        userId,
+      },
+      {
+        agentId: project.coordinatorAgentId,
+        title: 'Latest project conversation',
+        updatedAt: now,
+        userId,
+      },
+      {
+        agentId: otherProject.coordinatorAgentId,
+        title: 'Other project conversation',
+        updatedAt: now,
+        userId,
+      },
+    ]);
+
+    expect(await model.listConversations(project.id, 1)).toEqual([
+      expect.objectContaining({ title: 'Latest project conversation' }),
+    ]);
+    expect(await otherModel.listConversations(project.id)).toBeNull();
   });
 
   it('does not expose or mutate another user project in personal mode', async () => {
@@ -156,9 +198,15 @@ describe('ProjectModel', () => {
       instruction: 'Use project knowledge',
       projectId: project.id,
     });
-    expect(await model.listAgents(project.id)).toEqual([
-      expect.objectContaining({ binding: expect.objectContaining({ role: 'reviewer' }) }),
-    ]);
+    expect(await model.listAgents(project.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ binding: expect.objectContaining({ role: 'coordinator' }) }),
+        expect.objectContaining({ binding: expect.objectContaining({ role: 'reviewer' }) }),
+      ]),
+    );
+    await expect(model.removeAgent(project.id, project.coordinatorAgentId)).rejects.toThrow(
+      'The project coordinator cannot be removed',
+    );
     expect(await model.listKnowledgeBases(project.id)).toHaveLength(1);
     expect(await model.getEnabledKnowledgeBaseIdsForTask(task.id)).toEqual([]);
     await model.addKnowledgeBase(project.id, { enabled: true, knowledgeBaseId: knowledgeBase.id });

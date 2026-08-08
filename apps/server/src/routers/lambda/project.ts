@@ -134,14 +134,15 @@ export const projectRouter = router({
   detail: projectProcedure.input(idInput).query(async ({ ctx, input }) => {
     try {
       const project = requireResult(await ctx.projectModel.findById(input.id));
-      const [agents, completionReviews, knowledgeBases, tasks] = await Promise.all([
+      const [agents, completionReviews, conversations, knowledgeBases, tasks] = await Promise.all([
         ctx.projectModel.listAgents(project.id),
         ctx.projectModel.listCompletionReviews(project.id),
+        ctx.projectModel.listConversations(project.id),
         ctx.projectModel.listKnowledgeBases(project.id),
         ctx.projectModel.listTasks(project.id),
       ]);
       return {
-        data: { agents, completionReviews, knowledgeBases, project, tasks },
+        data: { agents, completionReviews, conversations, knowledgeBases, project, tasks },
         success: true,
       };
     } catch (error) {

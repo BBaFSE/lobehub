@@ -10,8 +10,10 @@ import {
   projects,
 } from '../schemas/project';
 import { tasks } from '../schemas/task';
+import { topics } from '../schemas/topic';
 import type { LobeChatDatabase } from '../type';
 import { buildWorkspacePayload, buildWorkspaceWhere } from '../utils/workspace';
+import { AgentModel } from './agent';
 
 export interface CreateProjectInput {
   avatar?: string;
@@ -65,24 +67,66 @@ export class ProjectModel {
       throw new Error('Project identifier must be between 3 and 6 characters');
     }
 
-    const [project] = await this.db
-      .insert(projects)
-      .values(
-        buildWorkspacePayload(
-          { userId: this.userId, workspaceId: this.workspaceId },
-          { ...input, identifier },
-        ),
-      )
-      .returning();
-    return project;
+    return this.db.transaction(async (tx) => {
+      const coordinator = await new AgentModel(
+        tx as LobeChatDatabase,
+        this.userId,
+        this.workspaceId,
+      ).create({
+        avatar: input.avatar,
+        description: `Coordinates the ${input.name} project`,
+        systemRole: [
+          `You are the coordinator for the project "${input.name}" (${identifier}).`,
+          input.description ? `Project description: ${input.description}` : undefined,
+          'Help the user resume work, turn intent into concrete tasks and goals, use project resources, and coordinate project agents.',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        title: `${input.name} Coordinator`,
+        visibility: input.visibility,
+      });
+
+      const [project] = await tx
+        .insert(projects)
+        .values(
+          buildWorkspacePayload(
+            { userId: this.userId, workspaceId: this.workspaceId },
+            { ...input, coordinatorAgentId: coordinator.id, identifier },
+          ),
+        )
+        .returning();
+
+      await tx.insert(projectAgents).values({
+        addedByUserId: this.userId,
+        agentId: coordinator.id,
+        projectId: project.id,
+        responsibility: 'Coordinates project conversations, work, and resources',
+        role: 'coordinator',
+        workspaceId: this.workspaceId ?? null,
+      });
+
+      return project;
+    });
   }
 
   async delete(id: string) {
-    const [deleted] = await this.db
-      .delete(projects)
-      .where(and(eq(projects.id, id), this.manageable()))
-      .returning();
-    return deleted ?? null;
+    return this.db.transaction(async (tx) => {
+      const [project] = await tx
+        .select({ coordinatorAgentId: projects.coordinatorAgentId })
+        .from(projects)
+        .where(and(eq(projects.id, id), this.manageable()))
+        .limit(1);
+      if (!project) return null;
+
+      const [deleted] = await tx
+        .delete(projects)
+        .where(and(eq(projects.id, id), this.manageable()))
+        .returning();
+      await new AgentModel(tx as LobeChatDatabase, this.userId, this.workspaceId).delete(
+        project.coordinatorAgentId,
+      );
+      return deleted ?? null;
+    });
   }
 
   async findById(id: string) {
@@ -104,6 +148,28 @@ export class ProjectModel {
       .orderBy(desc(projects.updatedAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  async listConversations(projectId: string, limit = 10) {
+    const project = await this.findById(projectId);
+    if (!project) return null;
+
+    return this.db
+      .select({
+        id: topics.id,
+        status: topics.status,
+        title: topics.title,
+        updatedAt: topics.updatedAt,
+      })
+      .from(topics)
+      .where(
+        and(
+          eq(topics.agentId, project.coordinatorAgentId),
+          buildWorkspaceWhere({ userId: this.userId, workspaceId: this.workspaceId }, topics),
+        ),
+      )
+      .orderBy(desc(topics.updatedAt))
+      .limit(limit);
   }
 
   async update(id: string, input: UpdateProjectInput) {
@@ -201,7 +267,11 @@ export class ProjectModel {
   }
 
   async removeAgent(projectId: string, agentId: string) {
-    if (!(await this.findManageableById(projectId))) return false;
+    const project = await this.findManageableById(projectId);
+    if (!project) return false;
+    if (project.coordinatorAgentId === agentId) {
+      throw new Error('The project coordinator cannot be removed');
+    }
     const deleted = await this.db
       .delete(projectAgents)
       .where(and(eq(projectAgents.projectId, projectId), eq(projectAgents.agentId, agentId)))
