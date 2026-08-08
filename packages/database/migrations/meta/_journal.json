@@ -971,7 +971,7 @@
       "idx": 138,
       "version": "7",
       "when": 1786185377217,
-      "tag": "0138_empty_karnak",
+      "tag": "0138_add_agent_operations_step_count_idx",
       "breakpoints": true
     }
   ],
