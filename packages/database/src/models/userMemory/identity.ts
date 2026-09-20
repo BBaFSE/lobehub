@@ -85,7 +85,7 @@ export class UserMemoryIdentityModel {
       ? normalizeBm25MatchQuery(normalizedQuery, SAFE_BM25_QUERY_OPTIONS)
       : '';
     const resolvedRelationships =
-      relationships && relationships.length > 0 ? relationships : [RelationshipEnum.Self];
+      relationships && relationships.length > 0 ? relationships : undefined;
     const candidateResult =
       normalizedQuery && this.ftsSearchCandidateSource?.ftsSearchCandidateEnabled
         ? await this.ftsSearchCandidateSource.ftsSearchCandidates({
@@ -113,8 +113,11 @@ export class UserMemoryIdentityModel {
         ? sql`(${userMemories.id} @@@ paradedb.boolean(should => ARRAY[paradedb.match('title', ${bm25MatchQuery}, conjunction_mode => true)]) OR ${userMemoriesIdentities.id} @@@ paradedb.boolean(should => ARRAY[paradedb.match('description', ${bm25MatchQuery}, conjunction_mode => true), paradedb.match('role', ${bm25MatchQuery}, conjunction_mode => true)]))`
         : undefined,
       types && types.length > 0 ? inArray(userMemoriesIdentities.type, types) : undefined,
-      // Default to 'self' relationship if not specified
-      inArray(userMemoriesIdentities.relationship, resolvedRelationships),
+      // Only filter by relationship when explicitly requested (no 'self' default) —
+      // otherwise identities with relationship 'son'/'couple'/etc. never surface.
+      resolvedRelationships && resolvedRelationships.length > 0
+        ? inArray(userMemoriesIdentities.relationship, resolvedRelationships)
+        : undefined,
       tags && tags.length > 0
         ? or(...tags.map((tag) => sql<boolean>`${tag} = ANY(${userMemoriesIdentities.tags})`))
         : undefined,
