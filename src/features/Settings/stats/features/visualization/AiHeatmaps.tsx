@@ -134,8 +134,11 @@ const AiHeatmaps = memo<
       fontSize={16}
       title={t('stats.lastYearActivity')}
     >
-      <HeatmapStats />
-      {content}
+      <HeatmapStats mobile={mobile} />
+      <div style={{ overflowX: 'auto' }}>{content}</div>
+      <div style={{ color: cssVar.colorTextDescription, fontSize: 10, marginTop: 4 }}>
+        {t('heatmaps.swipeHint')}
+      </div>
     </StatsFormGroup>
   );
 });
