@@ -84,7 +84,7 @@ const HeatmapStats = memo<{ mobile?: boolean }>(({ mobile }) => {
     <Flexbox align={'center'} flex={1} gap={4} key={item.label}>
       <div style={{ fontSize: 20, fontWeight: 'bold' }}>
         {loading || item.loading ? (
-          <Skeleton.Button active size={'small'} style={{ width: 56 }} />
+          <Skeleton height={28} width={56} />
         ) : (
           item.value
         )}
