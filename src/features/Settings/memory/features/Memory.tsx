@@ -42,7 +42,14 @@ const MemorySetting = memo(() => {
   const memorySettings: FormGroupItem<UserMemorySettings> = {
     children: [
       {
-        children: <Switch disabled={!canManageMemory} />,
+        children: <Switch
+          checked={memory?.enabled}
+          disabled={!canManageMemory}
+          onChange={(checked) => {
+            if (!canManageMemory) return;
+            save(() => setSettings({ memory: { enabled: checked } }));
+          }}
+        />,
         desc: t('memory.enabled.desc'),
         label: (
           <Flexbox horizontal align={'center'} gap={4}>
